@@ -78,11 +78,34 @@
       height: 500px;
       max-width: 100%;
       overflow: hidden;
-      border: 1px solid #555;
+      /* border: 1px solid #555; */
       margin-top: 10px;
       box-sizing: border-box;
     }
 
+    .subgraph-button-group {
+      display: flex;
+      justify-content: center;   /* 水平居中对齐 */
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;           /* 自动换行适配窄屏 */
+    }
+
+
+    .subgraph-button {
+      background-color: #444;     /* 深灰背景 */
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      font-size: 14px;
+    }
+
+    .subgraph-button:hover {
+      background-color: #4caf50;  /* 鼠标悬停变绿色 */
+    }
 
     /* 右侧聊天 + 疾病预测 */
     #right-panel {
@@ -148,6 +171,8 @@
       background-color: #1976D2;
     }
 
+
+
   </style>
   
   
@@ -174,13 +199,16 @@
 
     <!-- 中间图谱区 -->
     <div id="center-panel">
-      <div>
-        <button onclick="loadSubgraph('并发症')">关联疾病</button>
-        <button onclick="loadSubgraph('症状')">潜在症状</button>
-        <button onclick="loadSubgraph('饮食')">饮食建议</button>
-        <button onclick="loadSubgraph('药物')">推荐用药</button>
-      </div>
       <div class="graph-box" id="graph"></div>
+      <div class="subgraph-button-group">
+        <button class="subgraph-button" onclick="loadSubgraph('并发症')">关联疾病</button>
+        <button class="subgraph-button" onclick="loadSubgraph('症状')">潜在症状</button>
+        <button class="subgraph-button" onclick="loadSubgraph('科室')">所属科室</button>
+        <button class="subgraph-button" onclick="loadSubgraph('饮食')">饮食建议</button>
+        <button class="subgraph-button" onclick="loadSubgraph('药物')">推荐用药</button>
+        <button class="subgraph-button" onclick="loadSubgraph('检查')">推荐检查</button>
+      </div>
+      
     </div>
 
     <!-- 右侧聊天与预测 -->
@@ -190,6 +218,13 @@
         <input id="chat-input" type="text" placeholder="请输入问题..." />
         <button id="chat-send">发送</button>
       </div>
+
+      <!-- 疾病预测结果区域（矩形树图） -->
+      <div id="predict-input-area">
+        <input id="symptom-input" type="text" placeholder="请输入症状（用逗号分隔）" style="width: 80%;" />
+        <button id="predict-btn">预测疾病</button>
+      </div>
+      <div id="predict-box" style="height: 300px; margin-top: 10px;"></div>
     </div>
 
   </div>
@@ -244,6 +279,10 @@
                 selector: 'node',
                 style: {
                   'label': 'data(label)',
+                  'font-size': 10,  // 👈 控制字体大小（根据需要可调小）
+                  'color': '#ffffff',  // 👈 字体颜色设为白色（适合黑色背景）
+                  'text-outline-width': 2,  // 👈 文字描边宽度
+                  'text-outline-color': '#000000',  // 👈 黑色描边增强可读性
                   'background-color': ele => {
                     const type = ele.data('type');
                     return {
@@ -262,8 +301,16 @@
                   // 'label': 'data(label)',
                   'curve-style': 'bezier',
                   'target-arrow-shape': 'triangle',
-                  'line-color': '#999',
-                  'target-arrow-color': '#999'
+                  'line-color': ele => {
+                    const type = ele.data('label');
+                    return type === 'no_eat' ? '#ff4444' :  // 红色：忌吃
+                          type === 'recommand_eat' || type === 'do_eat' ? '#44bb44' : '#999';  // 绿色：推荐/宜吃
+                  },
+                  'target-arrow-color': ele => {
+                    const type = ele.data('label');
+                    return type === 'no_eat' ? '#ff4444' :
+                          type === 'recommand_eat' || type === 'do_eat' ? '#44bb44' : '#999';
+                  }
                 }
               }
             ],
@@ -301,6 +348,14 @@
           document.getElementById("predict-box").innerHTML = "预测失败：请检查服务端是否已开启。";
         });
     }
+
+    document.getElementById('predict-btn').addEventListener('click', () => {
+      const input = document.getElementById('symptom-input').value.trim();
+      if (!input) return;
+      const symptoms = input.split("，").join(",").split(",").map(s => s.trim()).filter(s => s);
+      predictDiseaseBySymptoms(symptoms);
+    });
+
   
     document.getElementById('chat-send').addEventListener('click', () => {
       const input = document.getElementById('chat-input');
