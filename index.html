@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>医学图谱可视化</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5"></script>
+  <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.0.0/dist/echarts-wordcloud.min.js"></script>
+
+  <style>
+    /* body {
+      font-family: sans-serif;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    } */
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* 顶部导航栏 */
+    #navbar {
+      background-color: #1e1e1e;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #ccc;
+    }
+
+    #navbar input {
+      padding: 6px;
+      width: 250px;
+      border-radius: 4px;
+      border: none;
+      font-size: 14px;
+    }
+
+    /* 主体三栏布局 */
+    #main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* 左侧词云区域 */
+    #left-panel {
+      width: 25%;
+      background-color: #1a1a1a;
+      border-right: 1px solid #444;
+      padding: 10px;
+    }
+
+    /* 中间子图按钮 + 图区域 */
+    #center-panel {
+      flex: 1;
+      background-color: #181818;
+      padding: 10px;
+    }
+
+    /* .graph-box {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #555;
+      margin-top: 10px;
+    } */
+
+    .graph-box {
+      width: 100%;
+      height: 500px;
+      max-width: 100%;
+      overflow: hidden;
+      border: 1px solid #555;
+      margin-top: 10px;
+      box-sizing: border-box;
+    }
+
+
+    /* 右侧聊天 + 疾病预测 */
+    #right-panel {
+      width: 30%;
+      background-color: #1a1a1a;
+      border-left: 1px solid #444;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #chat-log {
+      flex: 1;
+      border: 1px solid #555;
+      padding: 8px;
+      margin-bottom: 10px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      background: #222;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    #chat-input-area {
+      display: flex;
+    }
+
+    #chat-input {
+      flex: 1;
+      padding: 5px;
+      font-size: 14px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+    }
+
+    #chat-send {
+      padding: 5px 10px;
+      margin-left: 5px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #chat-send:hover {
+      background-color: #1976D2;
+    }
+
+    button {
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      margin: 5px 5px 0 0;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #1976D2;
+    }
+
+  </style>
+  
+  
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <div id="navbar">
+    <div>
+      <input id="disease-input" type="text" placeholder="请输入疾病名称" />
+      <button onclick="loadData()">搜索</button>
+    </div>
+    <div style="font-size: 13px; color: #aaa;">
+      本网站仅供参考，如有不适请及时就医
+    </div>
+  </div>
+
+  <!-- 主体三栏 -->
+  <div id="main-container">
+    
+    <!-- 左侧词云区 -->
+    <div id="left-panel">
+      <div id="wordcloud" style="height: 100%;"></div>
+    </div>
+
+    <!-- 中间图谱区 -->
+    <div id="center-panel">
+      <div>
+        <button onclick="loadSubgraph('并发症')">关联疾病</button>
+        <button onclick="loadSubgraph('症状')">潜在症状</button>
+        <button onclick="loadSubgraph('饮食')">饮食建议</button>
+        <button onclick="loadSubgraph('药物')">推荐用药</button>
+      </div>
+      <div class="graph-box" id="graph"></div>
+    </div>
+
+    <!-- 右侧聊天与预测 -->
+    <div id="right-panel">
+      <div id="chat-log"></div>
+      <div id="chat-input-area">
+        <input id="chat-input" type="text" placeholder="请输入问题..." />
+        <button id="chat-send">发送</button>
+      </div>
+    </div>
+
+  </div>
+  
+  
+  <script>
+    function loadData() {
+      const disease = document.getElementById('disease-input').value;
+      loadWordCloud(disease);
+    }
+  
+    function loadWordCloud(disease) {
+      fetch(`http://127.0.0.1:5000/api/wordcloud?name=${encodeURIComponent(disease)}`)
+        .then(res => res.json())
+        .then(data => {
+          const wordChart = echarts.init(document.getElementById('wordcloud'));
+          wordChart.setOption({
+            tooltip: {},
+            series: [{
+              type: 'wordCloud',
+              shape: 'circle',
+              gridSize: 8,
+              sizeRange: [12, 40],
+              rotationRange: [0, 0],
+              textStyle: {
+                color: () => {
+                  return 'rgb(' + [
+                    Math.round(Math.random() * 200),
+                    Math.round(Math.random() * 200),
+                    Math.round(Math.random() * 200)
+                  ].join(',') + ')';
+                }
+              },
+              data: data
+            }]
+          });
+        });
+    }
+  
+    function loadSubgraph(type) {
+      // document.getElementById('graph').innerHTML = "加载中...";
+      const disease = document.getElementById('disease-input').value;
+      fetch(`http://127.0.0.1:5000/api/graph?name=${disease}&type=${type}`)
+        .then(res => res.json())
+        .then(data => {
+          if (window.cy) window.cy.destroy();
+          window.cy = cytoscape({
+            container: document.getElementById('graph'),
+            elements: [...data.nodes, ...data.edges],
+            style: [
+              {
+                selector: 'node',
+                style: {
+                  'label': 'data(label)',
+                  'background-color': ele => {
+                    const type = ele.data('type');
+                    return {
+                      'Disease': '#ff9999',
+                      'Drug': '#99ccff',
+                      'Symptom': '#ccffcc',
+                      'Food': '#ffffcc',
+                      'Check': '#d9b3ff'
+                    }[type] || '#ccc';
+                  }
+                }
+              },
+              {
+                selector: 'edge',
+                style: {
+                  // 'label': 'data(label)',
+                  'curve-style': 'bezier',
+                  'target-arrow-shape': 'triangle',
+                  'line-color': '#999',
+                  'target-arrow-color': '#999'
+                }
+              }
+            ],
+            layout: { name: 'cose' }
+          });
+        });
+    }
+
+    function predictDiseaseBySymptoms(symptoms) {
+      fetch("http://127.0.0.1:5000/api/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symptoms: symptoms })
+      })
+        .then(res => res.json())
+        .then(data => {
+          const chart = echarts.init(document.getElementById("predict-box"));
+          chart.setOption({
+            tooltip: {
+              formatter: info => `${info.name}：${info.value}`
+            },
+            series: [{
+              type: 'treemap',
+              roam: false,
+              nodeClick: false,
+              label: {
+                show: true,
+                formatter: '{b}'
+              },
+              data: data.map(d => ({ name: d.name, value: d.probability }))
+            }]
+          });
+        })
+        .catch(err => {
+          document.getElementById("predict-box").innerHTML = "预测失败：请检查服务端是否已开启。";
+        });
+    }
+  
+    document.getElementById('chat-send').addEventListener('click', () => {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      if (!message) return;
+  
+      const chatLog = document.getElementById('chat-log');
+      chatLog.innerHTML += `<div><strong>🧑 你：</strong>${message}</div>`;
+  
+      fetch('http://127.0.0.1:5000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: message })
+      })
+        .then(res => res.json())
+        .then(data => {
+          chatLog.innerHTML += `🤖 智能助手：${data.answer}<br/><br/>`;
+          chatLog.scrollTop = chatLog.scrollHeight;
+        });
+  
+      input.value = '';
+    });
+  
+    document.getElementById('chat-input').addEventListener('keypress', e => {
+      if (e.key === 'Enter') document.getElementById('chat-send').click();
+    });
+  
+    // 初始加载
+    window.onload = () => {
+      document.getElementById('disease-input').value = ''; // 初始疾病
+      loadData();
+    };
+  </script>
+  
+
+</body>
+
+</html>

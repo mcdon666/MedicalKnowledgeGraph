@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>医学图谱可视化</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5"></script>
+  <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.0.0/dist/echarts-wordcloud.min.js"></script>
+
+  <style>
+    body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+    #search { padding: 10px; }
+    #charts { display: flex; flex: 1; }
+    #wordcloud { width: 30%; height: 100%; }
+    #graph { flex: 1; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="search">
+    <input id="input" type="text" placeholder="输入疾病名称" value="肝癌" />
+    <button onclick="loadData()">搜索</button>
+  </div>
+  <div id="charts">
+    <div id="wordcloud"></div>
+    <div id="graph"></div>
+  </div>
+
+  <script>
+    const wordChart = echarts.init(document.getElementById('wordcloud'));
+    const graphDiv = document.getElementById('graph');
+    let cy = null;
+
+    function loadData() {
+      const disease = document.getElementById('input').value;
+
+      // 加载词云
+      fetch(`http://127.0.0.1:5000/api/related_diseases?name=${encodeURIComponent(disease)}`)
+        .then(res => res.json())
+        .then(data => {
+          wordChart.setOption({
+            tooltip: {},
+            series: [{
+              type: 'wordCloud',
+              shape: 'circle',
+              gridSize: 8,
+              sizeRange: [5, 35],
+              rotationRange: [0, 0], // 👉 全部水平
+              textStyle: {
+              normal: {
+                color: function () {
+                return 'rgb(' + [
+                    Math.round(Math.random() * 160),
+                    Math.round(Math.random() * 160),
+                    Math.round(Math.random() * 160)
+                ].join(',') + ')';
+                }
+              },
+              emphasis: {
+                shadowBlur: 10,
+                shadowColor: '#333'
+              }
+              },
+              data: data
+            }]
+          });
+        });
+
+      // 加载图谱
+      fetch(`http://127.0.0.1:5000/api/graph?name=${encodeURIComponent(disease)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (cy) cy.destroy();
+          cy = cytoscape({
+            container: graphDiv,
+            elements: [...data.nodes, ...data.edges],
+            style: [
+              {
+                selector: 'node',
+                style: {
+                  'label': 'data(label)',
+                  'background-color': ele => {
+                    const type = ele.data('type');
+                    return {
+                      'Disease': '#ff9999',
+                      'Drug': '#99ccff',
+                      'Symptom': '#ccffcc',
+                      'Food': '#ffffcc',
+                      'Check': '#d9b3ff'
+                    }[type] || '#ccc';
+                  }
+                }
+              },
+              {
+                selector: 'edge',
+                style: {
+                  'label': 'data(label)',
+                  'curve-style': 'bezier',
+                  'target-arrow-shape': 'triangle',
+                  'line-color': '#999',
+                  'target-arrow-color': '#999'
+                }
+              }
+            ],
+            layout: { name: 'cose' }
+          });
+
+          cy.on('tap', 'node', evt => {
+            const name = evt.target.data('label');
+            document.getElementById('input').value = name;
+            loadData();
+          });
+        });
+      
+        fetch('http://127.0.0.1:5000/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: '糖尿病吃什么药？' })
+          })
+          .then(res => res.json())
+          .then(data => {
+            console.log(data.answer);
+          });
+
+
+    }
+
+    loadData();
+  </script>
+</body>
+</html>

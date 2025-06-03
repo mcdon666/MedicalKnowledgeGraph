@@ -11,8 +11,8 @@ from lxml import etree
 import pymongo
 import re
 
-'''基于司法网的犯罪案件采集'''
-class CrimeSpider:
+'''医疗数据采集'''
+class MedicalSpider:
     def __init__(self):
         self.conn = pymongo.MongoClient()
         self.db = self.conn['medical']
@@ -162,5 +162,5 @@ class CrimeSpider:
                 print(e)
 
 
-handler = CrimeSpider()
+handler = MedicalSpider()
 handler.inspect_crawl()
