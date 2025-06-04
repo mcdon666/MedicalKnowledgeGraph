@@ -160,121 +160,79 @@ def get_subgraph():
         })
 
 
-# ========== 症状预测疾病 ==========
-class Symptom2DiseaseGNN(nn.Module):
-    def __init__(self, hidden_dim, out_dim):
+# ========== 模型结构 ==========
+class SymptomMLP(nn.Module):
+    def __init__(self, in_dim=768, hidden=128, out_dim=54):
         super().__init__()
-        self.conv1 = HeteroConv({
-            ('symptom', 'has_symptom', 'disease'): GATConv((-1, -1), hidden_dim, add_self_loops=False),
-            ('disease', 'rev_has_symptom', 'symptom'): GATConv((-1, -1), hidden_dim, add_self_loops=False),
-        }, aggr='sum')
-        self.lin = Linear(hidden_dim, out_dim)
+        self.fc = nn.Sequential(
+            nn.Linear(in_dim, hidden),
+            nn.LayerNorm(hidden),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(hidden, out_dim)
+        )
 
-    def forward(self, x_dict, edge_index_dict):
-        x_dict = self.conv1(x_dict, edge_index_dict)
-        x_dict = {k: F.relu(v) for k, v in x_dict.items()}
-        out = self.lin(x_dict['symptom'])  # 每个 symptom 输出疾病概率
-        return out
+    def forward(self, x):
+        return self.fc(x)
 
-query = """
-MATCH (d:Disease)-[:has_symptom]->(s:Symptom)
-RETURN id(d) as did, d.name as dname, id(s) as sid, s.name as sname
-"""
-results = graph.run(query).data()
+# ========== 加载模型与数据 ==========
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-symptoms, diseases = {}, {}
-edges = []
+mlp_model = SymptomMLP().to(device)
+mlp_model.load_state_dict(torch.load("mlp_model.pt", map_location=device))
+mlp_model.eval()
 
-for row in results:
-    sid, sname = row["sid"], row["sname"]
-    did, dname = row["did"], row["dname"]
-    if sid not in symptoms:
-        symptoms[sid] = sname
-    if did not in diseases:
-        diseases[did] = dname
-    edges.append((sid, did))
+with open("symptom_name2idx.pkl", "rb") as f:
+    symptom_name2idx = pickle.load(f)
+with open("department_idx2name.pkl", "rb") as f:
+    dept_idx2name = pickle.load(f)
 
-print(f"✅ 提取完成：{len(symptoms)} 个症状，{len(diseases)} 个疾病，{len(edges)} 条 has_symptom 关系")
+symptom_feat = torch.load("symptom_feat.pt")
 
-# ========== 构建 HeteroData ==========
-print("🔧 构建 HeteroData 图对象...")
-symptom_id_map = {nid: i for i, nid in enumerate(symptoms)}
-disease_id_map = {nid: i for i, nid in enumerate(diseases)}
+# ========== 推理函数 ==========
+@torch.no_grad()
+def get_symptom_vector(name):
+    if name in symptom_name2idx:
+        idx = symptom_name2idx[name]
+        return symptom_feat[idx].unsqueeze(0)
+    else:
+        print(f"❗症状 `{name}` 未命中缓存")
+        return None
 
-symptom_to_disease_edge_index = torch.tensor([
-    [symptom_id_map[sid] for sid, did in edges],
-    [disease_id_map[did] for sid, did in edges]
-], dtype=torch.long)
+@torch.no_grad()
+def predict_with_mlp(symptom_names, k=5):
+    vecs = [get_symptom_vector(name) for name in symptom_names]
+    vecs = [v for v in vecs if v is not None]
 
-# 手动构造疾病 → 症状的反向边
-disease_to_symptom_edge_index = torch.stack([
-    symptom_to_disease_edge_index[1],  # target 变 source
-    symptom_to_disease_edge_index[0],  # source 变 target
-])
+    if not vecs:
+        return []
 
-# 构建 HeteroData 图
-data = HeteroData()
-data['symptom'].num_nodes = len(symptoms)
-data['disease'].num_nodes = len(diseases)
+    input_tensor = torch.mean(torch.cat(vecs, dim=0), dim=0, keepdim=True).to(device)
+    logits = mlp_model(input_tensor)
+    probs = F.softmax(logits, dim=-1)
+    topk = torch.topk(probs, k=k)
 
-# 加载特征
-symptom_feat = torch.load("symptom_feat.pt")  # shape [num_symptoms, 768]
-disease_feat = torch.load("disease_feat.pt")  # shape [num_diseases, 768]
+    return [(dept_idx2name[int(idx)], float(score)) for idx, score in zip(topk.indices[0], topk.values[0])]
 
-# 绑定到 data 图对象中
-data['symptom'].x = symptom_feat
-data['disease'].x = disease_feat
-print("成功绑定症状与疾病特征向量！")
-
-
-# 添加双向边
-data['symptom', 'has_symptom', 'disease'].edge_index = symptom_to_disease_edge_index
-data['disease', 'rev_has_symptom', 'symptom'].edge_index = disease_to_symptom_edge_index
-
-# ========== 加载模型 ==========
-model = Symptom2DiseaseGNN(hidden_dim=128, out_dim=len(diseases))
-model.load_state_dict(torch.load("gnn_model.pt", map_location="cpu"))
-model.eval()
-
-print("✅ GNN 模型加载完成！服务已准备就绪")
-
-# ========== 预测 API ==========
+# ========== Flask 接口 ==========
 @app.route('/api/predict', methods=['POST'])
-def predict():
+def predict_api():
     input_data = request.get_json()
     input_symptoms = input_data.get('symptoms', [])
 
     if not input_symptoms:
-        return jsonify([])
+        return jsonify({"error": "No symptoms provided"}), 400
 
-    # 映射症状 → 索引
-    symptom_indices = []
-    for sid, name in symptoms.items():
-        if name in input_symptoms:
-            symptom_indices.append(symptom_id_map[sid])
+    results = predict_with_mlp(input_symptoms)
 
-    if not symptom_indices:
-        return jsonify([])
+    if not results:
+        return jsonify({"error": "No valid symptoms found"}), 400
 
-    # 推理
-    with torch.no_grad():
-        out = model(data.x_dict, data.edge_index_dict)
-        probs = torch.sigmoid(out)
-        joint_pred = probs[symptom_indices].mean(dim=0)
-        topk_vals, topk_idxs = torch.topk(joint_pred, 5)
-
-    # 构造响应
-    results = []
-    for val, idx in zip(topk_vals.tolist(), topk_idxs.tolist()):
-        for did, i in disease_id_map.items():
-            if i == idx:
-                results.append({
-                    "name": diseases[did],
-                    "probability": round(float(val), 4)
-                })
-                break
-
-    return jsonify(results)
+    response = [
+        {"department": dept, "probability": round(prob, 4)}
+        for dept, prob in results
+    ]
+    return jsonify(response)
 
 # ========== 启动服务 ==========
 if __name__ == "__main__":

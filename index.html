@@ -2,6 +2,7 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>医学图谱可视化</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5"></script>
   <script src="https://unpkg.com/cytoscape@3.20.0/dist/cytoscape.min.js"></script>
@@ -92,8 +93,8 @@
     }
 
 
-    .subgraph-button {
-      background-color: #444;     /* 深灰背景 */
+    button, .subgraph-button, #chat-send {
+      background-color: #444;
       color: white;
       border: none;
       padding: 6px 12px;
@@ -103,8 +104,8 @@
       font-size: 14px;
     }
 
-    .subgraph-button:hover {
-      background-color: #4caf50;  /* 鼠标悬停变绿色 */
+    button:hover, .subgraph-button:hover, #chat-send:hover {
+      background-color: #4caf50; /* 悬停统一为绿色 */
     }
 
     /* 右侧聊天 + 疾病预测 */
@@ -117,7 +118,24 @@
       flex-direction: column;
     }
 
-    #chat-log {
+    /* 上部聊天区域占 55% */
+    #chat-section {
+      flex: 0 0 50%;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 10px;
+    }
+
+    /* 下部预测区域占 45% */
+    #predict-section {
+      flex: 0 0 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* 聊天记录展示区 */
+    #predict-box, #chat-log {
       flex: 1;
       border: 1px solid #555;
       padding: 8px;
@@ -129,11 +147,15 @@
       font-size: 14px;
     }
 
-    #chat-input-area {
+
+    /* 通用输入行（input + button）横向排列带间距 */
+    .input-row {
       display: flex;
+      gap: 6px;
     }
 
-    #chat-input {
+    /* 输入框统一样式 */
+    .input-box {
       flex: 1;
       padding: 5px;
       font-size: 14px;
@@ -143,32 +165,20 @@
       border-radius: 4px;
     }
 
-    #chat-send {
-      padding: 5px 10px;
-      margin-left: 5px;
-      background-color: #2196F3;
+    /* 按钮统一样式 */
+    .subgraph-button {
+      background-color: #444;
       color: white;
-      border: none;
+      border: 1px solid #666;
+      padding: 6px 12px;
       border-radius: 4px;
       cursor: pointer;
+      transition: background-color 0.3s ease;
+      font-size: 14px;
     }
 
-    #chat-send:hover {
-      background-color: #1976D2;
-    }
-
-    button {
-      background-color: #2196F3;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      margin: 5px 5px 0 0;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #1976D2;
+    .subgraph-button:hover {
+      background-color: #4caf50;
     }
 
 
@@ -213,19 +223,27 @@
 
     <!-- 右侧聊天与预测 -->
     <div id="right-panel">
-      <div id="chat-log"></div>
-      <div id="chat-input-area">
-        <input id="chat-input" type="text" placeholder="请输入问题..." />
-        <button id="chat-send">发送</button>
+      <!-- 聊天模块 -->
+      <div id="chat-section">
+        
+        <div id="chat-input-area" class="input-row">
+          <input id="chat-input" class="input-box" type="text" placeholder="请输入问题..." />
+          <button id="chat-send" class="subgraph-button">发送</button>
+        </div>
+        <div id="chat-log" style="height: 100%; margin-top: 10px;"></div>
       </div>
-
-      <!-- 疾病预测结果区域（矩形树图） -->
-      <div id="predict-input-area">
-        <input id="symptom-input" type="text" placeholder="请输入症状（用逗号分隔）" style="width: 80%;" />
-        <button id="predict-btn">预测疾病</button>
+    
+      <!-- 疾病预测模块 -->
+      <div id="predict-section">
+        
+        <div id="predict-input-area" class="input-row">
+          <input id="symptom-input" class="input-box" type="text" placeholder="请输入症状（用逗号分隔）" />
+          <button id="predict-btn" class="subgraph-button">应去科室</button>
+        </div>
+        <div id="predict-box" style="height: 100%; margin-top: 10px;"></div>
       </div>
-      <div id="predict-box" style="height: 300px; margin-top: 10px;"></div>
     </div>
+    
 
   </div>
   
@@ -330,8 +348,18 @@
           const chart = echarts.init(document.getElementById("predict-box"));
           chart.setOption({
             tooltip: {
-              formatter: info => `${info.name}：${info.value}`
+              formatter: info => `推荐科室：${info.name}<br>概率：${(info.value * 100).toFixed(2)}%`
             },
+            visualMap: {
+              show: false,
+              min: 0,
+              max: 1,
+              inRange: {
+                color: ['#003300', '#1a661a', '#339933', '#66cc66', '#ccffcc']
+
+              }
+            },
+            
             series: [{
               type: 'treemap',
               roam: false,
@@ -340,7 +368,8 @@
                 show: true,
                 formatter: '{b}'
               },
-              data: data.map(d => ({ name: d.name, value: d.probability }))
+              
+              data: data.map(d => ({ name: d.department, value: d.probability }))
             }]
           });
         })
