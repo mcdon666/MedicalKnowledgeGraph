@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>医疗知识图谱结构统计可视化</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    body { font-family: 'Arial', sans-serif; background: #f9f9f9; }
+    .chart-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 40px; padding: 30px; }
+    .chart-box { width: 600px; height: 400px; background: #fff; box-shadow: 0 0 8px rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center;">🧬 医疗知识图谱结构统计可视化</h2>
+  <div class="chart-container">
+    <div id="nodeChart" class="chart-box"></div>
+    <div id="relationChart" class="chart-box"></div>
+  </div>
+
+  <script>
+    // ---------------- 节点类型数据 ----------------
+    const nodeOption = {
+      title: { text: '各类型节点数量', left: 'center' },
+      tooltip: { trigger: 'item' },
+      legend: { orient: 'vertical', left: 'left' },
+      series: [{
+        name: '节点数量',
+        type: 'pie',
+        radius: '60%',
+        data: [
+          { value: 8808, name: 'Disease 疾病' },
+          { value: 5998, name: 'Symptom 症状' },
+          { value: 3828, name: 'Drug 药物' },
+          { value: 4870, name: 'Food 饮食' },
+          { value: 3353, name: 'Check 检查' },
+          { value: 54, name: 'Department 科室' },
+          { value: 17201, name: 'Producer 厂商' }
+        ],
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)'
+          }
+        }
+      }]
+    };
+
+    // ---------------- 关系类型数据 ----------------
+    const relationOption = {
+      title: { text: '各类型关系数量', left: 'center' },
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: [
+          'recommand_eat', 'no_eat', 'do_eat', 'belongs_to',
+          'common_drug', 'drugs_of', 'recommand_drug',
+          'need_check', 'has_symptom', 'acompany_with'
+        ],
+        axisLabel: { rotate: 45 }
+      },
+      yAxis: { type: 'value' },
+      series: [{
+        data: [
+          40236, 22247, 22238, 8844,
+          14649, 17315, 59467,
+          39423, 54717, 12029
+        ],
+        type: 'bar',
+        color: '#73C9E6'
+      }]
+    };
+
+    // ---------------- 初始化图表 ----------------
+    const nodeChart = echarts.init(document.getElementById('nodeChart'));
+    const relationChart = echarts.init(document.getElementById('relationChart'));
+
+    nodeChart.setOption(nodeOption);
+    relationChart.setOption(relationOption);
+  </script>
+</body>
+</html>

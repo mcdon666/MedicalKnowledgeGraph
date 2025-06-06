@@ -51,12 +51,15 @@ def get_wordcloud():
 
     # 中文分词
     words = jieba.lcut(text)
-    stopwords = set(["包括", "具有", "疾病", "可能", "患者"])
+    stopwords = set(["包括", "具有", "疾病", "可能", "患者","包括", "具有", "疾病", 
+                     "可能", "患者", "可以", "进行", "一般", "相关",
+                     "如果", "需要", "常见", "发生", "一种", "对于", "以及", "情况", "导致",
+                     "有时", "可能会", "以及", "通过", "如有","主要","症状","有关","一次"])
     filtered = [w for w in words if len(w) > 1 and w not in stopwords]
     freq = Counter(filtered)
 
     # 格式化为 ECharts 所需格式
-    data = [{"name": k, "value": v} for k, v in freq.items()]
+    data = [{"name": k, "value": v} for k, v in freq.items() ] 
     return jsonify(data)
 
 # ========== 问答系统 ==========
@@ -144,15 +147,6 @@ def get_subgraph():
                     }
                 })
                 seen_edges.add(edge_key)
-
-
-            # edges.append({
-            #     "data": {
-            #         "source": str(d.id),
-            #         "target": str(n.id),
-            #         "label": r.type
-            #     }
-            # })
 
         return jsonify({
             "nodes": list(nodes.values()),
